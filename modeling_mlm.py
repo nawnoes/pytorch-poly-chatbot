@@ -118,7 +118,7 @@ class PositionalEmbedding(nn.Module):
     t = torch.arange(x.shape[1], device=x.device)
     return self.embedding(t)
 
-class MeenaEncoder(nn.Module):
+class MLM(nn.Module):
   def __init__(self,
                vocab_size,
                dim=2560,
@@ -127,13 +127,18 @@ class MeenaEncoder(nn.Module):
                head_num=32,
                dropout=0.1):
     super().__init__()
+    self.vocab_size = vocab_size
+
     self.token_emb = nn.Embedding(vocab_size, dim)
     self.position_emb = PositionalEmbedding(dim,max_seq_len)
 
     self.encoders = nn.ModuleList([Encoder(d_model=dim, head_num=head_num, dropout=dropout) for _ in range(encoder_depth)])
 
     self.norm = nn.LayerNorm(dim)
-    self.lm_head = nn.Linear(dim, vocab_size, bias=False)
+    self.lm_head = self.lm_head = nn.Sequential(
+            nn.Linear(dim, dim),
+            nn.Linear(dim, vocab_size,bias=False)
+            )
 
   def forward(self, input_ids, input_mask, labels=None):
     inputs_embed = self.token_emb(input_ids)
@@ -146,7 +151,17 @@ class MeenaEncoder(nn.Module):
 
     lm_logits = self.lm_head(self.norm(hidden_states))
 
-    return hidden_states
+    loss = None
+    if labels is not None:
+      # only calculating loss on masked tokens
+      loss_mx = labels != -100
+      output = lm_logits[loss_mx].view(-1, self.vocab_size)
+      labels = labels[loss_mx].view(-1)
+      loss_fn = nn.CrossEntropyLoss()
+      loss = loss_fn(output, labels)
+
+    return lm_logits, loss
+
 
 if __name__=="__main__":
   pass
