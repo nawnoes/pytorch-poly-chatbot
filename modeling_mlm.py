@@ -5,7 +5,7 @@ import torch.nn.functional as F
 
 def self_attention(query, key, value, mask=None, causal=False):
   key_transpose = torch.transpose(key,-2,-1)                      # (bath, head_num, d_k, token_)
-  matmul_result = torch.matmul(query,key_transpose)                # MatMul(Q,K)
+  matmul_result = torch.matmul(query,key_transpose)               # MatMul(Q,K)
   d_k = query.size()[-1]
   attention_score = matmul_result/math.sqrt(d_k)                  # Scale
 
