@@ -19,6 +19,7 @@ from dataset import DatasetForMLM
 from model_config import ModelConfig
 from modeling_mlm import MLM
 
+from apex import amp
 
 # from torchsummary import summary
 
