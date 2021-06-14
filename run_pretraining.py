@@ -35,7 +35,8 @@ class MLMTrainer(object):
                device=None,
                train_batch_size=8,
                eval_batch_size=None,
-               log_dir='../logs'):
+               log_dir='../logs',
+               fp16=True):
     self.dataset = dataset
     self.model = model
     self.tokenizer = tokenizer
@@ -47,6 +48,7 @@ class MLMTrainer(object):
     self.train_batch_size = train_batch_size
     self.eval_batch_size = eval_batch_size
     self.log_dir = log_dir
+    self.fp16 = fp16
 
     if device is None:
       self.device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
@@ -77,7 +79,6 @@ class MLMTrainer(object):
             ckpt_steps,
             gradient_accumulation_steps):
 
-    loss_fn = nn.CrossEntropyLoss()
     losses = {}
     global_steps = 0
     local_steps = 0
@@ -123,7 +124,11 @@ class MLMTrainer(object):
         origin_loss = loss.item()
 
         loss = loss / gradient_accumulation_steps  # divide loss into gradient accumulation step
-        loss.backward()
+        if self.fp16:
+          with amp.scale_loss(loss,optimizer) as scaled_loss:
+            scaled_loss.backward()
+        else:
+          loss.backward()
 
         losses[global_steps] = origin_loss
         step_loss += origin_loss
@@ -132,6 +137,11 @@ class MLMTrainer(object):
         global_steps += 1
 
         if global_steps % gradient_accumulation_steps == 0:
+          if self.fp16:
+            torch.nn.utils.clip_grad_norm(amp.master_params(optimizer), max_norm=1.0)
+          else:
+            torch.nn.utils.clip_grad_norm(self.model.parameters(), max_norm=1.0)
+
           scheduler.step()
           optimizer.step()
           self.model.zero_grad()
@@ -204,6 +214,7 @@ class MLMTrainer(object):
       'scheduler_state_dict': scheduler.state_dict(),
       'losses': losses,  # Loss 저장
       'train_step': train_step,  # 현재 진행한 학습
+      'amp': amp.state_dict()
     }, f'{self.checkpoint_path}/{self.model_name}.pth')
 
 
@@ -213,10 +224,9 @@ def count_parameters(model):
 
 def main():
   torch.manual_seed(9)
-  base_path = '/content/drive/My Drive/Colab Notebooks/transformer'
-  # base_path = '../..'
+  base_path = '.'
   log_dir = f'{base_path}/logs'
-  config_path = f'{base_path}/example/language_model/config.json'
+  config_path = f'{base_path}/config-mlm.json'
 
   # Config
   config = ModelConfig(config_path=config_path).get_config()
@@ -248,7 +258,9 @@ def main():
                                 max_len=config.max_seq_len,
                                 train_batch_size=config.batch_size,
                                 eval_batch_size=config.batch_size,
-                                log_dir=log_dir)
+                                log_dir=log_dir,
+                                fp16=config.fp16
+                        )
 
   # dataloader
   train_dataloader, eval_dataloader = trainer.build_dataloaders(train_test_split=0.1)
@@ -273,6 +285,9 @@ def main():
   scheduler = torch.optim.lr_scheduler.StepLR(optimizer,  # Optimzer
                                               step_size=len(train_dataloader),  # Gamma 비율로 줄일 스텝사이즈
                                               gamma=0.9)  # lr줄이는 비율
+
+  if config.fp16:
+    model, optimizer = amp.initialize(model, optimizer, opt_level = config.fp16_opt_level)
 
   trainer.train(epochs=config.epochs,
                 train_dataloader=train_dataloader,
