@@ -253,14 +253,13 @@ def main():
 
   # traniner
   trainer = MLMTrainer(dataset, model, tokenizer,
-                                model_name=config.model_name,
-                                checkpoint_path=config.checkpoint_path,
-                                max_len=config.max_seq_len,
-                                train_batch_size=config.batch_size,
-                                eval_batch_size=config.batch_size,
-                                log_dir=log_dir,
-                                fp16=config.fp16
-                        )
+                        model_name=config.model_name,
+                        checkpoint_path=config.checkpoint_path,
+                        max_len=config.max_seq_len,
+                        train_batch_size=config.batch_size,
+                        eval_batch_size=config.batch_size,
+                        log_dir=log_dir,
+                        fp16=config.fp16)
 
   # dataloader
   train_dataloader, eval_dataloader = trainer.build_dataloaders(train_test_split=0.1)
