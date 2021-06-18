@@ -56,7 +56,7 @@ class PolyEncoder(nn.Module):
         # Merge
         if labels is not None:
             cand_emb = candidate_embs.permute(1,0,2)
-            cand_emb = candidate_embs.expand(batch_size, batch_size, candidate_embs.shape[2]) # [batch_size, batch_size, hidden_size]
+            cand_emb = candidate_embs.expand(batch_size, batch_size, cand_emb.shape[2]) # [batch_size, batch_size, hidden_size]
             cand_ctxt_attn_output = self.dot_product_attention(candidate_embs, context_embs, context_embs).squeeze()
             dot_product = (cand_ctxt_attn_output * cand_emb).sum(-1)
             mask = torch.eye(batch_size).to(context_input_ids.device)
