@@ -142,11 +142,55 @@ def main():
     max_seq_len=config.max_seq_len,
     head_num=config.n_head
   )
-  poly_encoder = PolyEncoder(
+  model = PolyEncoder(
     model= mlm_model,
     poly_m= config.poly_m,
     poly_code_embeddings = config.poly_code_embdeddings
   )
+
+  trainer = PolyEncoderTrainer(dataset, model, tokenizer,
+                               model_name=config.model_name,
+                               checkpoint_path=config.checkpoint_path,
+                               max_len=config.max_seq_len,
+                               batch_size=config.batch_size,
+                               log_dir=log_dir,
+                               fp16=config.fp16)
+
+  # dataloader
+  train_dataloader, eval_dataloader = trainer.build_dataloaders(train_test_split=0.1)
+
+  # Prepare optimizer
+  param_optimizer = list(model.named_parameters())
+  no_decay = ['bias', 'LayerNorm.weight']
+  optimizer_grouped_parameters = [
+    {'params': [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)],
+     'weight_decay': 0.01},
+    {'params': [p for n, p in param_optimizer if any(nd in n for nd in no_decay)],
+     'weight_decay': 0.0}
+  ]
+
+  learning_rate = 2e-3
+  adam_epsilon = 1e-6
+
+  optimizer = AdamW(optimizer_grouped_parameters,
+                    lr=learning_rate,
+                    eps=adam_epsilon)
+
+  scheduler = torch.optim.lr_scheduler.StepLR(optimizer,  # Optimzer
+                                              step_size=len(train_dataloader),  # Gamma 비율로 줄일 스텝사이즈
+                                              gamma=0.9)  # lr줄이는 비율
+
+  if config.fp16:
+    model, optimizer = amp.initialize(model, optimizer, opt_level = config.fp16_opt_level)
+
+  trainer.train(epochs=config.epochs,
+                train_dataloader=train_dataloader,
+                eval_dataloader=eval_dataloader,
+                optimizer=optimizer,
+                scheduler=scheduler,
+                log_steps=config.log_steps,
+                ckpt_steps=config.ckpt_steps,
+                gradient_accumulation_steps=config.gradient_accumulation_steps)
 
 
 if __name__ == '__main__':
